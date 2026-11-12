@@ -1,4 +1,4 @@
-# ontology_schema
+# ontology_spec
 
 Palantir 式「结构 + 动作」本体的开源落地方案：**结构层用 Neo4j 官方的
 [ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec)，动作层（ActionType）
