@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/spec/action-graph/1.0.0/schema.json",
+  "title": "ActionModel",
+  "description": "Action types for an ontology-graph-spec model. Parameters bind to node/relationship property ids of the referenced ontology; modes MERGE/CREATE mirror the spec's MappingMode vocabulary.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "https://example.com/spec/action-graph/1.0.0/schema.json",
+      "description": "Schema specification uri used."
+    },
+    "version": {
+      "type": "string",
+      "description": "User-defined version of this action document."
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique identifier of the action document, typically kebab-case."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human readable name for the action set."
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the action set."
+    },
+    "ontology": {
+      "type": "object",
+      "description": "The ontology-graph-spec document this action set depends on.",
+      "properties": {
+        "id": { "type": "string", "description": "Id of the referenced ontology model." },
+        "version": { "type": "string", "description": "Version of the referenced ontology model." }
+      },
+      "required": ["id", "version"],
+      "additionalProperties": false
+    },
+    "actions": {
+      "type": "object",
+      "description": "Action definitions keyed by action id.",
+      "additionalProperties": { "$ref": "#/$defs/Action" }
+    }
+  },
+  "required": ["schema", "version", "id", "ontology", "actions"],
+  "additionalProperties": false,
+  "$defs": {
+    "Action": {
+      "type": "object",
+      "description": "A Palantir-ActionType-style operation contract.",
+      "properties": {
+        "title": { "type": "string", "description": "Short human readable title." },
+        "description": {
+          "type": "string",
+          "description": "When to use and when not to use this action. The primary semantics for LLM reasoning."
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Parameters keyed by id.",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/Parameter" }
+        },
+        "targets": {
+          "type": "array",
+          "description": "What the action writes. Declares the write-back contract.",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Target" }
+        },
+        "preconditions": { "$ref": "#/$defs/Preconditions" },
+        "effects": { "$ref": "#/$defs/Effects" },
+        "binding": { "$ref": "#/$defs/Binding" },
+        "governance": { "$ref": "#/$defs/Governance" },
+        "custom": {
+          "type": "object",
+          "description": "User-defined arbitrary data.",
+          "additionalProperties": {}
+        }
+      },
+      "required": ["title", "description", "parameters", "targets", "preconditions", "effects", "binding", "governance"],
+      "additionalProperties": false
+    },
+    "Parameter": {
+      "type": "object",
+      "description": "A parameter of an action.",
+      "properties": {
+        "type": { "$ref": "#/$defs/Neo4jType", "description": "Value type, from the same vocabulary as the ontology." },
+        "required": { "type": "boolean", "description": "Whether the parameter must be provided. Defaults to false." },
+        "description": { "type": "string", "description": "Meaning of the parameter, for LLM reasoning." },
+        "enum": {
+          "type": "array",
+          "description": "Allowed values. Must mirror the one_of of the bound ontology property when set there.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "binds": { "$ref": "#/$defs/Binds" },
+        "custom": {
+          "type": "object",
+          "description": "User-defined arbitrary data.",
+          "additionalProperties": {}
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "Binds": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Binds to a node property of the ontology.",
+          "properties": {
+            "node": { "type": "string", "description": "Node id in the ontology." },
+            "property": { "type": "string", "description": "Property id of that node." }
+          },
+          "required": ["node", "property"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Binds to a relationship property of the ontology.",
+          "properties": {
+            "relationship": { "type": "string", "description": "Relationship id in the ontology." },
+            "property": { "type": "string", "description": "Property id of that relationship." }
+          },
+          "required": ["relationship", "property"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Target": {
+      "type": "object",
+      "description": "One write target of an action.",
+      "properties": {
+        "node": { "type": "string", "description": "Node id written by this action." },
+        "relationship": { "type": "string", "description": "Relationship id written by this action." },
+        "mode": { "$ref": "#/$defs/Mode", "description": "Write mode. MERGE/CREATE mirror the ontology spec's MappingMode." }
+      },
+      "required": ["mode"],
+      "anyOf": [
+        { "required": ["node"] },
+        { "required": ["relationship"] }
+      ],
+      "additionalProperties": false
+    },
+    "Mode": {
+      "type": "string",
+      "description": "The write approach used by the action.",
+      "enum": ["MERGE", "CREATE", "UPDATE", "DELETE"]
+    },
+    "Preconditions": {
+      "type": "object",
+      "description": "Dual-form preconditions: natural language for the LLM, a boolean Cypher check for the executor.",
+      "properties": {
+        "natural": { "type": "string", "description": "Precondition in natural language." },
+        "check": { "type": "string", "description": "Cypher query returning a single boolean. Must be true before executing." }
+      },
+      "required": ["natural", "check"],
+      "additionalProperties": false
+    },
+    "Effects": {
+      "type": "object",
+      "description": "What changes when the action runs.",
+      "properties": {
+        "natural": { "type": "string", "description": "Effect in natural language." }
+      },
+      "required": ["natural"],
+      "additionalProperties": false
+    },
+    "Binding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Executes a Cypher statement with the parameters.",
+          "properties": {
+            "kind": { "const": "cypher" },
+            "cypher": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "cypher"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Delegates to an MCP tool.",
+          "properties": {
+            "kind": { "const": "mcp" },
+            "tool": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "tool"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Delegates to an HTTP endpoint.",
+          "properties": {
+            "kind": { "const": "http" },
+            "url": { "type": "string", "format": "uri" },
+            "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }
+          },
+          "required": ["kind", "url", "method"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Governance": {
+      "type": "object",
+      "description": "Submission criteria: risk, reversibility, approval.",
+      "properties": {
+        "risk": { "$ref": "#/$defs/Risk", "description": "Risk level of the action." },
+        "reversible": { "type": "boolean", "description": "Whether the action can be undone. Defaults to false." },
+        "undo": { "type": "string", "description": "Cypher statement reverting the action. Required when reversible is true." },
+        "approval": { "type": "boolean", "description": "Whether human/process approval is required before execution. Defaults to false." },
+        "notes": { "type": "string", "description": "Additional governance notes." }
+      },
+      "required": ["risk", "reversible"],
+      "allOf": [
+        {
+          "if": { "properties": { "reversible": { "const": true } } },
+          "then": { "required": ["undo"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "Risk": {
+      "type": "string",
+      "description": "The risk level of an action.",
+      "enum": ["low", "medium", "high"]
+    },
+    "Neo4jType": {
+      "type": "string",
+      "description": "A Neo4j property type (scalar subset shared with the ontology spec).",
+      "enum": ["STRING", "INTEGER", "FLOAT", "BOOLEAN", "DATE", "UUID"]
+    }
+  }
+}

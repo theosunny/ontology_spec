@@ -1,0 +1,57 @@
+# 结构层：纯 ontology-graph-spec 文档（Neo4j 官方格式，可直接被其工具链消费）
+# 校验：schemas/ontology-graph-spec.schema.json（官方 1.1.0）
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "1"
+id: movies
+name: Movies
+description: People and the films they appear in.
+
+nodes:
+  Actor:
+    label: Actor
+    description: A person who performs in films.
+    aliases: [Performer]
+    reference: https://schema.org/Person
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Stable identifier of the actor.
+      name:
+        type: STRING
+        must_exist: true
+        description: Full name.
+
+  Movie:
+    label: Movie
+    description: A film released to the public.
+    reference: https://schema.org/Movie
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Stable identifier of the movie.
+      title:
+        type: STRING
+        must_exist: true
+        description: Public title of the movie.
+      genre:
+        type: STRING
+        one_of: [DRAMA, COMEDY, THRILLER]
+        description: Primary genre of the movie.
+
+relationships:
+  ACTED_IN:
+    type: ACTED_IN
+    description: An actor appeared in a film.
+    reference: https://schema.org/actor
+    from:
+      node: Actor
+      min_count: 0
+    to:
+      node: Movie
+      min_count: 1
+    properties:
+      roles:
+        type: STRING
+        description: Character names played, comma separated.

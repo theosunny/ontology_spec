@@ -1,0 +1,8 @@
+# build artifacts
+dist/
+# python
+__pycache__/
+*.pyc
+# IDE
+.idea/
+.vscode/

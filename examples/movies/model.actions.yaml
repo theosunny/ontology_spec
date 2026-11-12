@@ -1,0 +1,140 @@
+# 动作层：ActionType 文档（独立于本体，通过 id/property 引用耦合）
+# 校验：schemas/actions.schema.json + tools/validate.py 的跨文档规则
+schema: https://example.com/spec/action-graph/1.0.0/schema.json
+version: "1"
+id: movies-actions
+name: Movies Actions
+description: Action types for the movies ontology. Consumed by LLM agents and the executor.
+
+# 依赖的本体（跨文档校验会核对 id 与 version）
+ontology:
+  id: movies
+  version: "1"
+
+actions:
+  assign_actor_to_movie:
+    title: 演员加入电影
+    description: |
+      当用户要求"让某演员出演某电影 / 把某演员加到某部电影"时调用。
+      要求 Actor 与 Movie 都已存在。幂等：重复调用不会创建重复关系。
+    parameters:
+      actor_id:
+        type: STRING
+        required: true
+        description: 演员的稳定标识。
+        binds:
+          node: Actor
+          property: id
+      movie_id:
+        type: STRING
+        required: true
+        description: 电影的稳定标识。
+        binds:
+          node: Movie
+          property: id
+      roles:
+        type: STRING
+        required: false
+        description: 扮演的角色名，逗号分隔。
+        binds:
+          relationship: ACTED_IN
+          property: roles
+    targets:
+      - relationship: ACTED_IN
+        mode: MERGE
+    preconditions:
+      natural: Actor 与 Movie 均存在，且两者之间尚无 ACTED_IN 关系。
+      check: |
+        MATCH (a:Actor {id: $actor_id}), (m:Movie {id: $movie_id})
+        WHERE NOT (a)-[:ACTED_IN]->(m)
+        RETURN count(*) = 1
+    effects:
+      natural: 创建一条 ACTED_IN 关系，可选写入 roles 属性。
+    binding:
+      kind: cypher
+      cypher: |
+        MATCH (a:Actor {id: $actor_id}), (m:Movie {id: $movie_id})
+        MERGE (a)-[r:ACTED_IN]->(m)
+        SET r.roles = $roles
+    governance:
+      risk: low
+      reversible: true
+      undo: |
+        MATCH (a:Actor {id: $actor_id})-[r:ACTED_IN]->(m:Movie {id: $movie_id})
+        DELETE r
+
+  update_movie_genre:
+    title: 修改电影类型
+    description: |
+      当用户要求"把某电影改成某类型 / 更新类型"时调用。
+      genre 只能取 DRAMA、COMEDY、THRILLER 之一。
+    parameters:
+      movie_id:
+        type: STRING
+        required: true
+        description: 电影的稳定标识。
+        binds:
+          node: Movie
+          property: id
+      genre:
+        type: STRING
+        required: true
+        description: 新的类型，枚举值见本体 Movie.genre 的 one_of。
+        enum: [DRAMA, COMEDY, THRILLER]
+        binds:
+          node: Movie
+          property: genre
+    targets:
+      - node: Movie
+        mode: UPDATE
+    preconditions:
+      natural: Movie 存在，且新值与当前值不同。
+      check: |
+        MATCH (m:Movie {id: $movie_id})
+        WHERE m.genre <> $genre
+        RETURN count(*) = 1
+    effects:
+      natural: 覆盖写入 Movie.genre；旧值不保留（如需审计请先导出）。
+    binding:
+      kind: cypher
+      cypher: |
+        MATCH (m:Movie {id: $movie_id})
+        SET m.genre = $genre
+    governance:
+      risk: medium
+      reversible: false
+
+  delete_movie:
+    title: 删除电影
+    description: |
+      当用户明确要求"删除某电影"时调用。破坏性操作：
+      会连带删除该电影的所有关系。高风险，需审批后才可执行。
+      优先建议用户改用"下架/归档"类动作，确认无替代方案时才调用本动作。
+    parameters:
+      movie_id:
+        type: STRING
+        required: true
+        description: 电影的稳定标识。
+        binds:
+          node: Movie
+          property: id
+    targets:
+      - node: Movie
+        mode: DELETE
+    preconditions:
+      natural: Movie 存在。
+      check: |
+        MATCH (m:Movie {id: $movie_id})
+        RETURN count(*) = 1
+    effects:
+      natural: 删除该 Movie 节点及其全部关系。不可恢复。
+    binding:
+      kind: cypher
+      cypher: |
+        MATCH (m:Movie {id: $movie_id})
+        DETACH DELETE m
+    governance:
+      risk: high
+      reversible: false
+      approval: true
+      notes: 高风险动作，执行前必须获得人工/流程审批。
